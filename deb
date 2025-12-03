@@ -424,7 +424,7 @@ EOF
 cat >/etc/pam.d/runuser <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
-auth	    sufficient  pam_rootok.so
+auth	   sufficient  pam_rootok.so
 session	  required    pam_limits.so
 session	  required    pam_unix.so
 EOF
@@ -432,7 +432,7 @@ EOF
 cat >/etc/pam.d/runuser-l <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
-auth	    include     runuser
+auth	   include     runuser
 session	  include     runuser
 EOF
 
@@ -448,10 +448,13 @@ root  ALL=(ALL) ALL
 EOF
 chmod 0440 /etc/sudoers
 chmod 0440 /etc/sudoers.d
-chattr -R +i /etc/sudoers*
 
 # MISC HARDENING
-echo "/bin/bash" > /etc/shells
+cat >/etc/shells <<'EOF'
+/bin/bash
+/usr/bin/bash
+EOF
+
 passwd -l root
 echo "needs_root_rights=no" >> /etc/X11/Xwrapper.config
 dpkg-reconfigure xserver-xorg-legacy
@@ -506,11 +509,13 @@ cat > /etc/security/access.conf << 'EOF'
 -:ALL:ALL
 EOF
 
+
 # GRUB
 sed -i 's|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT="slab_nomerge init_on_alloc=1 init_on_free=1 pti=on page_alloc.shuffle=1 random.trust_cpu=off random.trust_bootloader=off spectre_v2=on spec_store_bypass_disable=on l1tf=full mds=full tsx=off tsx_async_abort=full retbleed=auto vsyscall=none kvm.nx_huge_pages=force mitigations=auto quiet splash ipv6.disable=1 loglevel=0 apparmor=1 security=apparmor"|' /etc/default/grub
 update-grub
 chown root:root /etc/default/grub
 chmod 640 /etc/default/grub
+
 
 # SYSCTL
 rm -r /usr/lib/sysctl.d
@@ -703,6 +708,7 @@ EOF
 echo "                                    
 /dev/mapper/lvg-root                      /                          ext4       defaults,noatime,nodev,errors=remount-ro 0 1
 /dev/mapper/lvg-home                      /home                      ext4       defaults,noatime,nodev,nosuid 0 2
+/dev/mapper/lvg-opt                       /opt                       ext4       defaults,noatime,nodev,nosuid 0 2
 /dev/mapper/lvg-run--shm                  /run/shm                   ext4       defaults,noatime,nodev,nosuid,noexec 0 2
 /dev/mapper/lvg-tmp                       /tmp                       ext4       defaults,noatime,nodev,nosuid,noexec 0 2
 /dev/mapper/lvg-usr                       /usr                       ext4       defaults,noatime,nodev,ro 0 2
@@ -712,18 +718,17 @@ echo "
 /dev/mapper/lvg-var--tmp                  /var/tmp                   ext4       defaults,noatime,nodev,nosuid,noexec 0 2
 proc                                      /proc                      proc       defaults,noatime,nodev,nosuid,noexec,hidepid=2 0 0
 tmpfs                                     /run                       tmpfs      defaults,noatime,nodev,nosuid,noexec,mode=0755 0 0
-tmpfs                                     /tmp                       tmpfs      defaults,noatime,nodev,nosuid,noexec,mode=1777 0 0
-tmpfs                                     /var/tmp                   tmpfs      defaults,noatime,nodev,nosuid,noexec,bind,mode=1777
-tmpfs                                     /dev/shm                   tmpfs      defaults,noatime,noexec,nosuid,mode=1777 0 0
-udev                                      /dev                       devtmpfs   defaults,noatime,noexec,nosuid,noatime 0 0                              
-devpts                                    /dev/pts                   devpts     defaults,noatime,noexec,nosuid,noatime,newinstance,ptmxmode=0666 0 0
+tmpfs                                     /dev/shm                   tmpfs      defaults,noatime,nodev,nosuid,noexec,mode=1777 0 0
+udev                                      /dev                       devtmpfs   defaults,noatime,nodev,nosuid,noexec 0 0                              
+devpts                                    /dev/pts                   devpts     defaults,noatime,nodev,nosuid,noexec,newinstance,ptmxmode=0666 0 0
+/tmp                                      /var/tmp                   none       bind 0 0
 " >> /etc/fstab
 
 sed -i 's|^UUID=\([A-Za-z0-9-]\+\)[[:space:]]\+/boot/efi[[:space:]]\+vfat.*|UUID=\1                           /boot/efi                  vfat       noatime,nodev,nosuid,noexec,umask=0077 0 1|' /etc/fstab  
 
 # PERMISSIONS
 cd /etc
-chown root:root group group- passwd passwd- security iptables default sudoers fstab hosts.allow hosts.deny hosts host.conf
+chown root:root group group- passwd passwd- security iptables default sudoers fstab hosts host.conf
 chmod 0644 /etc/passwd
 chmod 0644 /etc/group
 chmod 0640 /etc/shadow
@@ -732,8 +737,7 @@ chmod 0600 /etc/passwd-
 chmod 0600 /etc/group-
 chmod 0600 /etc/shadow-
 chmod 0640 /etc/gshadow-
-chmod 0640 /etc/fstab
-chmod 0440 /etc/sudoers 
+chmod 0640 /etc/fstab 
 chmod 0600 /root/.bashrc
 chmod 0600 /root/.profile
 chmod 0600 /etc/security
@@ -748,16 +752,13 @@ chown root:root /var/run/dbus
 chmod 0750 /var/run/dbus
 chown root:root /run/systemd
 chmod 0750 /run/systemd
-chmod 0644 /etc/hosts.allow
-chmod 0644 /etc/hosts.deny
 chown root:root /etc/security/opasswd
 chmod 0600 /etc/security/opasswd
 chown root:adm -R /var/log
 chmod -R 0640 /var/log
-cd
 
 # LOCKDOWN
-find / -perm -4000 -o -perm -2000 -exec sudo chmod a-s {} \; 2>/dev/null
+find / -perm -4000 -o -perm -2000 -exec chmod a-s {} \; 2>/dev/null
 find / -perm -4000 -exec chmod u-s {} \;
 find / -perm -4000 -exec chmod g-s {} \;
 find / -perm -2000 -exec chmod u-s {} \;
@@ -767,7 +768,6 @@ chmod u+s /bin/sudo
 apt clean
 apt autopurge 
 apt purge "$(dpkg -l | grep '^rc' | awk '{print $2}')"
-rm -r /etc/ssh
 chattr +i /etc/fstab
 chattr +i /etc/adduser.conf
 chattr +i /etc/group
@@ -791,10 +791,17 @@ chattr -R +i /etc/pam.d
 chattr +i /usr/lib/sysctl.d/sysctl.conf
 chattr -R +i /etc/modprobe.d
 chattr +i /etc/services
-chattr +i /etc/sudoers
+chattr -R +i /etc/sudoers*
 chattr -R +i /etc/security
 chattr -R +i /etc/iptables
 chattr +i /etc/conf
 chattr -R +i /etc/opensnitchd
+chattr +i /etc/deluser.conf
+chattr +i /etc/login.defs
+chattr +i /etc/default/useradd
+chattr +i /etc/profile
+chattr +i /etc/bash.bashrc
+
+rm -r /etc/ssh
 
 echo "HARDENING SCRIPT COMPLETED"
