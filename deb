@@ -4,14 +4,12 @@ set -euo pipefail
 
 # PRE CONFIG
 cat >/etc/apt/apt.conf.d/98-hardening <<'EOF'
-APT::Get::AllowUnauthenticated "false";
-Acquire::http::AllowRedirect "false";
 APT::Install-Recommends "false";
 EOF
 apt update
 
 # FIREWALL
-apt install -y iptables iptables-persistent netfilter-persistent
+apt install -y extrepo iptables iptables-persistent netfilter-persistent
 systemctl enable netfilter-persistent
 service netfilter-persistent start
 iptables -F
@@ -48,6 +46,10 @@ ip6tables -P OUTPUT DROP
 iptables-save   > /etc/iptables/rules.v4
 ip6tables-save  > /etc/iptables/rules.v6
 netfilter-persistent save
+
+extrepo enable librewolf
+apt update
+apt install -y librewolf
 
 # PACKAGE RESTRICTIONS
 apt purge  zram* pci* pmount* acpi* anacron* avahi* bc bind9* dns* fastfetch fonts-noto* fprint* dhcp* lxc* docker* podman* xen* bochs* uml* vagrant* libssh* ssh* openssh* acpi* samba* winbind* qemu* libvirt* virt* cron* avahi* cup* print* rsync* nftables* virtual* sane* rpc* bind* nfs* blue* pp* spee* espeak* mobile* wireless* bc perl inet* util-linux-locales tasksel* vim* os-prober* netcat* libssh* gcc g++ gdb lldb strace* ltrace* build-essential automake autoconf libtool cmake ninja-build meson
@@ -255,33 +257,23 @@ Pin: release *
 Pin-Priority: -1
 EOF
 
-# PROTON VPN
-wget https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_1.0.8_all.deb
-dpkg -i ./protonvpn-stable-release_1.0.8_all.deb && apt update
-apt install -y proton-vpn-gnome-desktop
-apt install -y libayatana-appindicator3-1 gir1.2-ayatanaappindicator3-0.1 gnome-shell-extension-appindicator
-
 # INSTALL PACKAGES
 apt install -y apparmor apparmor-utils apparmor-profiles apparmor-profiles-extra pamu2fcfg libpam-u2f rsyslog chrony libpam-tmpdir fail2ban needrestart apt-listchanges acct sysstat rkhunter chkrootkit debsums apt-show-versions unzip patch alsa-utils pavucontrol pipewire pipewire-audio-client-libraries pipewire-pulse wireplumber lynis macchanger unhide tcpd fonts-liberation extrepo gnome-brave-icon-theme breeze-gtk-theme bibata* mousepad libxfce4ui-utils thunar xfce4-panel xfce4-session xfce4-settings xfce4-terminal xfconf xfdesktop4 xfwm4 xserver-xorg xinit xserver-xorg-legacy xfce4-pulse* xfce4-whisk* wget opensnitch* python3-opensnitch*
 systemctl enable apparmor
 systemctl start apparmor
 aa-enforce /etc/apparmor.d/* 2>/dev/null || true
-extrepo enable librewolf
-apt update
-apt install -y librewolf
 
 # OPENSNITCH CONFIGURATION
 systemctl enable opensnitch
 systemctl start opensnitch
 apt install -y git
-git clone --depth 1 https://github.com/DXC-0/Respect-My-Internet.git /tmp/Respect-My-Internet
-chmod +x /tmp/Respect-My-Internet/install.sh
-/tmp/Respect-My-Internet/install.sh
-rm -rf /tmp/Respect-My-Internet
+git clone https://github.com/DXC-0/Respect-My-Internet.git
+chmod +x /Respect-My-Internet/install.sh
+/Respect-My-Internet/install.sh
+rm -rf /Respect-My-Internet
 systemctl restart opensnitch
 
 # PAM/U2F
-echo ">>> Touch your U2F device now to register..."
 pamu2fcfg -u dev > /etc/conf
 chmod 600 /etc/conf
 chown root:root /etc/conf
@@ -358,7 +350,6 @@ EOF
 cat >/etc/pam.d/sudo <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
-account   required    pam_access.so
 account   include     common-account
 password  include     common-password
 session   include     common-session
@@ -376,6 +367,7 @@ EOF
 cat >/etc/pam.d/sshd <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
+account   required    pam_access.so
 account   include     common-account
 password  include     common-password
 session   include     common-session
@@ -469,7 +461,7 @@ EOF
 
 passwd -l root
 echo "needs_root_rights=no" >> /etc/X11/Xwrapper.config
-DEBIAN_FRONTEND=noninteractive dpkg-reconfigure xserver-xorg-legacy
+dpkg-reconfigure xserver-xorg-legacy
 
 cat >/etc/host.conf <<'EOF'
 multi on
@@ -596,7 +588,6 @@ net.netfilter.nf_conntrack_max = 2000000
 net.netfilter.nf_conntrack_tcp_loose = 0
 EOF
 sysctl --system
-update-initramfs -u
 
 # MODULES
 cat > /etc/modprobe.d/harden.conf << 'EOF'
@@ -769,11 +760,6 @@ install freevxfs /bin/false
 EOF
 
 # MOUNTS
-# Create proc group for hidepid=2 (allows systemd and polkit to work)
-getent group proc >/dev/null || groupadd -r proc
-usermod -aG proc dev 2>/dev/null || true
-
-# Backup original fstab
 cp /etc/fstab /etc/fstab.bak
 
 # Remove existing entries for mount points we'll reconfigure (keep boot/efi entries)
@@ -796,7 +782,7 @@ tmpfs                                     /run                       tmpfs      
 tmpfs                                     /dev/shm                   tmpfs      defaults,noatime,nodev,nosuid,noexec,mode=1777 0 0
 udev                                      /dev                       devtmpfs   defaults,noatime,nosuid,noexec 0 0
 devpts                                    /dev/pts                   devpts     defaults,noatime,nodev,nosuid,noexec,newinstance,ptmxmode=0666 0 0
-/tmp                                      /var/tmp                   none       bind 0 0
+/var/tmp                                  /tmp                       none       defaults,noatime,nodev,nosuid,noexec,bind 0 0
 EOF
 
 sed -i 's|^UUID=\([A-Za-z0-9-]\+\)[[:space:]]\+/boot/efi[[:space:]]\+vfat.*|UUID=\1                           /boot/efi                  vfat       noatime,nodev,nosuid,noexec,umask=0077 0 1|' /etc/fstab  
@@ -928,6 +914,4 @@ chattr +i /etc/cron.allow
 chattr +i /etc/at.allow
 chattr -R +i /etc/polkit-1/rules.d
 
-rm -r /etc/ssh
-
-echo "HARDENING SCRIPT COMPLETED"
+echo "HARDENING SCRIPT COMPLETE"
