@@ -384,6 +384,7 @@ EOF
 cat >/etc/pam.d/su <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
+auth      required    pam_wheel.so use_uid
 account   required    pam_access.so
 account   include     common-account
 password  include     common-password
@@ -393,6 +394,7 @@ EOF
 cat >/etc/pam.d/su-l <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
+auth      required    pam_wheel.so use_uid
 account   required    pam_access.so
 account   include     common-account
 password  include     common-password
@@ -829,11 +831,61 @@ chmod 0600 /etc/security/opasswd
 chown root:adm -R /var/log
 chmod -R 0640 /var/log
 
+# PRIVILEGE ESCALATION HARDENING
+
+# Create wheel group and add dev (required for pam_wheel.so)
+getent group wheel >/dev/null || groupadd wheel
+usermod -aG wheel dev
+
+# Empty securetty - no root login on any TTY (belt+suspenders)
+echo "" > /etc/securetty
+chmod 600 /etc/securetty
+
+# Restrict cron/at to dev only
+echo "dev" > /etc/cron.allow
+echo "dev" > /etc/at.allow
+chmod 600 /etc/cron.allow
+chmod 600 /etc/at.allow
+# Deny files take precedence - empty them
+echo "" > /etc/cron.deny 2>/dev/null || true
+echo "" > /etc/at.deny 2>/dev/null || true
+
+# Polkit rules - deny all privileged actions except for dev
+mkdir -p /etc/polkit-1/rules.d
+cat > /etc/polkit-1/rules.d/99-deny-all.rules << 'EOF'
+// Deny all actions by default
+polkit.addRule(function(action, subject) {
+    // Allow dev user
+    if (subject.user == "dev") {
+        return polkit.Result.AUTH_ADMIN;
+    }
+    // Deny everyone else
+    return polkit.Result.NO;
+});
+EOF
+chmod 644 /etc/polkit-1/rules.d/99-deny-all.rules
+
+# Strip file capabilities from all binaries (privesc vector)
+# Common dangerous caps: cap_setuid, cap_setgid, cap_dac_override, cap_sys_admin
+find / -xdev -type f \( -perm -4000 -o -perm -2000 \) 2>/dev/null | while read f; do
+    setcap -r "$f" 2>/dev/null || true
+done
+# Also strip caps from known dangerous binaries
+for bin in /usr/bin/ping /usr/bin/traceroute /usr/bin/mtr /usr/sbin/tcpdump; do
+    [ -f "$bin" ] && setcap -r "$bin" 2>/dev/null || true
+done
+
+# Restrict user namespaces (prevent container escapes, some exploits)
+echo "kernel.unprivileged_userns_clone = 0" >> /usr/lib/sysctl.d/sysctl.conf
+
 # LOCKDOWN
 # Remove all SUID/SGID bits (will restore sudo after)
 find / -xdev \( -perm -4000 -o -perm -2000 \) -exec chmod a-s {} \; 2>/dev/null || true
 chmod u+s /usr/bin/sudo
 [ -f /bin/sudo ] && chmod u+s /bin/sudo || true
+
+# Strip pkexec SUID - common privesc vector (CVE-2021-4034 PwnKit)
+chmod 0755 /usr/bin/pkexec 2>/dev/null || true
 apt clean
 apt autopurge -y
 RC_PKGS=$(dpkg -l | grep '^rc' | awk '{print $2}' || true)
@@ -871,6 +923,10 @@ chattr +i /etc/login.defs
 chattr +i /etc/default/useradd
 chattr +i /etc/profile
 chattr +i /etc/bash.bashrc
+chattr +i /etc/securetty
+chattr +i /etc/cron.allow
+chattr +i /etc/at.allow
+chattr -R +i /etc/polkit-1/rules.d
 
 rm -r /etc/ssh
 
