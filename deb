@@ -358,6 +358,7 @@ EOF
 cat >/etc/pam.d/sudo <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
+account   required    pam_access.so
 account   include     common-account
 password  include     common-password
 session   include     common-session
@@ -366,6 +367,7 @@ EOF
 cat >/etc/pam.d/sudo-i <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
+account   required    pam_access.so
 account   include     common-account
 password  include     common-password
 session   include     common-session
@@ -382,6 +384,7 @@ EOF
 cat >/etc/pam.d/su <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
+account   required    pam_access.so
 account   include     common-account
 password  include     common-password
 session   include     common-session
@@ -390,6 +393,7 @@ EOF
 cat >/etc/pam.d/su-l <<'EOF'
 #%PAM-1.0
 auth      sufficient  pam_u2f.so authfile=/etc/conf
+account   required    pam_access.so
 account   include     common-account
 password  include     common-password
 session   include     common-session
