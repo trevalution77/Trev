@@ -507,11 +507,13 @@ chmod 644 /etc/hosts.allow
 chmod 644 /etc/hosts.deny
 
 cat > /etc/security/access.conf << 'EOF'
--:ALL EXCEPT dev:tty1
--:ALL EXCEPT dev:LOCAL
--:dev:ALL EXCEPT LOCAL
+# Only dev can login, only on physical console
 +:dev:tty1 tty2 tty3 tty4 tty5 tty6
+
+# Root blocked everywhere (even with password bypass)
 -:root:ALL
+
+# Everyone else denied - no pts, no remote, nothing
 -:ALL:ALL
 EOF
 
