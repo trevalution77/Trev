@@ -6,7 +6,6 @@ set -euo pipefail
 cat >/etc/apt/apt.conf.d/98-hardening <<'EOF'
 APT::Get::AllowUnauthenticated "false";
 Acquire::http::AllowRedirect "false";
-APT::Install-Recommends "false";
 EOF
 apt update
 
